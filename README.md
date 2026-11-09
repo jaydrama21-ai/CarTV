@@ -35,4 +35,4 @@ center screen through the GPU renderer. **Parked-only by default.**
   (robertnisipeanu / cauliflowermossgrape). See `NOTICE.md`.
 - `ffmpeg`: a static build from [eugeneware/ffmpeg-static](https://github.com/eugeneware/ffmpeg-static)
   (GPL). Fetched by SHA-256 at build time; not redistributed in this repo.
-- The icon is a placeholder (Doom's) pending a proper Car TV icon.
+- The icon is an original cat-on-TV meme drawn for this app.
