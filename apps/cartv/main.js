@@ -24,6 +24,7 @@ const { Player } = require('./player');
 const sources = require('./sources');
 const m3u = require('./m3u');
 const diag = require('./diag');
+const remote = require('./remote');
 
 const VID = 1;                 // image slot for the latest decoded frame
 const DW = 1280, DH = 720;     // decode size (16:9); the canvas scales it to the screen
@@ -48,10 +49,26 @@ function prepareFfmpeg(dataDir, log) {
 
 mgu.run({
   async start(ctx) {
-    const { ui, settings, log } = ctx;
+    const { ui, settings } = ctx;
+
+    // keep the last lines of the log for the phone page
+    const ring = [];
+    const note = (lvl, msg) => {
+      ring.push(new Date().toISOString().slice(11, 19) + ' ' + msg);
+      if (ring.length > 150) ring.shift();
+      try { ctx.log[lvl](msg); } catch (e) { /* ignore */ }
+    };
+    const log = { info: (m) => note('info', m), warn: (m) => note('warn', m) };
+
     prepareFfmpeg(ctx.dataDir, log);
-    const parked = Parked.watch(ctx, log);
+    const parked = Parked.watch(ctx, ctx.log);
     const blocked = () => settings.get('parkedOnly') !== false && parked.moving();
+
+    // what the iDrive cannot take as text lives in a file the phone page edits
+    const CONFIG = path.join(ctx.dataDir, 'cartv.json');
+    let config = { source: '', audioDevice: 'default', audioBackend: 'alsa' };
+    try { config = Object.assign(config, JSON.parse(fs.readFileSync(CONFIG, 'utf8'))); } catch (e) { /* first run */ }
+    const saveConfig = () => { try { fs.writeFileSync(CONFIG, JSON.stringify(config)); } catch (e) { log.warn('config not saved: ' + e.message); } };
 
     let channels = [];
     let idx = 0;
@@ -59,19 +76,20 @@ mgu.run({
     let hasFrame = false, vw = DW, vh = DH;
     let status = 'Loading channels...';
     let paused = false;
-    let diagLines = ['Press Diagnostics to scan the unit...'];
+    let diagLines = ['Not scanned yet'];
 
     const current = () => channels[idx] || null;
 
     async function loadChannels() {
-      const src = (settings.get('playlistUrl') || '').trim();
+      const src = (config.source || '').trim();
       try {
         channels = await m3u.load(src);
-        status = channels.length ? 'Ready - press Play' : 'Add a playlist or stream URL in Settings';
+        status = channels.length ? 'Ready - press Play' : 'No playlist yet - add one from your phone';
       } catch (e) {
         channels = []; status = 'Playlist error: ' + e.message; log.warn('playlist: ' + e.message);
       }
       if (idx >= channels.length) idx = 0;
+      log.info('playlist: ' + channels.length + ' channel(s)');
       menu();
     }
 
@@ -85,46 +103,97 @@ mgu.run({
       const ch = current();
       if (!ch) { status = 'No channel'; return; }
       status = 'Tuning ' + (ch.name || ch.url) + '...';
+      log.info('tuning ' + (ch.name || '') + ' ' + ch.url);
       let input = ch.url, inputArgs = [];
       try {
         const r = await sources.resolve(ch.url, { maxHeight: Number(settings.get('maxHeight')) || 720 });
         input = r.input; inputArgs = r.inputArgs || [];
       } catch (e) { status = 'Resolve failed: ' + e.message; log.warn('resolve: ' + e.message); return; }
       const audioOn = settings.get('audio') === 'car';
-      player = new Player({
+      const p = new Player({
         ffmpeg: FFMPEG,
         input, inputArgs, width: DW, height: DH, fps: 25, pixfmt: 'rgba',
         fit: settings.get('surface') === 'full' ? 'full' : 'fit',
-        // audio to the car speakers (experimental): device + backend come from the on-car recon.
-        audioDevice: audioOn ? (settings.get('audioDevice') || 'default') : null,
-        audioBackend: settings.get('audioBackend') || 'alsa',
-        onFrame: (buf) => { setImage(VID, DW, DH, buf); hasFrame = true; vw = DW; vh = DH; },
+        // sound to the car speakers (experimental): the device comes from the diagnostics
+        audioDevice: audioOn ? (config.audioDevice || 'default') : null,
+        audioBackend: config.audioBackend || 'alsa',
+        onFrame: (buf) => {
+          if (player !== p) return;
+          if (!hasFrame) { status = 'Playing ' + (ch.name || ''); log.info('first frame'); }
+          setImage(VID, DW, DH, buf); hasFrame = true; vw = DW; vh = DH;
+        },
       });
-      player.on('stall', () => { if (!hasFrame) status = 'Buffering...'; log.info('stall'); });
-      player.on('error', (e) => { status = 'Error: ' + e.message; log.warn('player: ' + e.message); });
-      player.on('exit', (code, err) => { if (code) log.info('ffmpeg exit ' + code + ' ' + (err || '')); });
-      player.on('end', () => { if (ui.isVisible('PLAY') && !blocked() && !paused) { log.info('stream ended; retrying'); startPlayer(); } });
-      player.start();
+      player = p;
+      p.on('stall', () => { if (player === p && !hasFrame) status = 'Buffering...'; });
+      p.on('error', (e) => { if (player === p) status = 'Error: ' + e.message; log.warn('player: ' + e.message); });
+      p.on('exit', (code, err) => {
+        log.info('ffmpeg exit ' + code + (err ? ': ' + err.slice(-400) : ''));
+        if (player === p && code && err) status = 'Stream failed: ' + err.split('\n').pop().slice(0, 80);
+      });
+      p.on('end', () => {
+        if (player !== p) return;
+        if (ui.isVisible('PLAY') && !blocked() && !paused) setTimeout(() => { if (player === p) startPlayer(); }, 3000);
+      });
+      p.start();
     }
+
+    /* ---------- phone remote: paste the playlist, pick a channel, read diagnostics ---------- */
+    async function runDiag() {
+      diagLines = ['Scanning the unit...'];
+      try {
+        diagLines = await diag.collect({ ffmpeg: FFMPEG, probeCommands: true });
+        diagLines.forEach((l) => ctx.log.info('DIAG ' + l));
+      } catch (e) { diagLines = ['diag error: ' + e.message]; }
+    }
+    let phone = null;
+    try {
+      phone = remote.start({
+        log: (m) => log.warn(m),
+        state: () => ({
+          status: blocked() ? 'Parked only - stop the car to watch' : status,
+          playing: !!player && hasFrame,
+          idx,
+          channels: channels.map((c) => c.name || c.url),
+          source: config.source,
+          audioDevice: config.audioDevice,
+          audioBackend: config.audioBackend,
+          diag: diagLines,
+          log: ring,
+        }),
+        setSource: (text) => { config.source = String(text || '').trim(); saveConfig(); idx = 0; loadChannels(); },
+        play: (i) => {
+          if (!channels.length) return;
+          idx = Math.max(0, Math.min(channels.length - 1, i | 0));
+          paused = false;
+          if (blocked()) return;
+          if (ui.isVisible('PLAY')) startPlayer(); else ui.open('PLAY');
+        },
+        stop: () => { paused = true; stopPlayer(); status = 'Stopped'; },
+        diag: () => { runDiag(); },
+        setAudio: (j) => {
+          if (j.device !== undefined) config.audioDevice = String(j.device || 'default').trim();
+          if (j.backend === 'alsa' || j.backend === 'pulse') config.audioBackend = j.backend;
+          saveConfig();
+          if (player) startPlayer();
+        },
+      });
+    } catch (e) { log.warn('phone remote not started: ' + e.message); }
+    const phoneLine = () => {
+      const a = remote.addresses();
+      if (!phone) return 'Phone remote unavailable';
+      if (!a.length) return 'Phone remote: connect the car to your phone hotspot';
+      return 'On your phone open  http://' + a[0].address + ':' + phone.port;
+    };
 
     /* ---------- menu ---------- */
     function menu() {
-      const where = channels.length ? '  (' + (idx + 1) + '/' + channels.length + ': ' + (current() && current().name || '') + ')' : '';
-      ui.text('BTN_PLAY', 'Play');
+      const where = channels.length ? '  (' + (idx + 1) + '/' + channels.length + ': ' + ((current() && current().name) || '') + ')' : '';
       ui.text('MENU_INFO', (blocked() ? 'Parked only - video plays when the car is stopped' : status) + where);
+      ui.text('PHONE_INFO', phoneLine());
     }
-    ui.onClick('BTN_PLAY', () => { if (!blocked() && channels.length) ui.open('PLAY'); });
+    ui.onClick('BTN_PLAY', () => { if (!blocked() && channels.length) { paused = false; ui.open('PLAY'); } });
     ui.onClick('BTN_NEXTCH', () => { if (channels.length) { idx = (idx + 1) % channels.length; menu(); } });
-
-    /* ---------- on-unit diagnostics (no laptop/SSH): scan + show on screen ---------- */
-    ui.onClick('BTN_DIAG', async () => {
-      diagLines = ['Scanning the unit...'];
-      ui.open('DIAG');
-      try {
-        diagLines = await diag.collect({ ffmpeg: FFMPEG, probeCommands: true });
-        diagLines.forEach((l) => log.info('DIAG ' + l));
-      } catch (e) { diagLines = ['diag error: ' + e.message]; }
-    });
+    ui.onClick('BTN_DIAG', () => { ui.open('DIAG'); runDiag(); });
     ui.onClick('BTN_DBACK', () => ui.open('MAIN'));
 
     /* ---------- play-screen buttons ---------- */
@@ -147,8 +216,7 @@ mgu.run({
       }
       if (ui.isVisible('MAIN')) menu();
     }
-    setInterval(sync, 300);
-    if (ui.onFocus) ui.onFocus(() => sync());
+    setInterval(sync, 500);
     process.on('exit', () => stopPlayer());
 
     /* ---------- drawing: latest frame on the whole screen, or a status line ---------- */
@@ -169,48 +237,35 @@ mgu.run({
         if (msg) sr.text(msg, pl.w / 2, pl.h / 2, 30, '#ffffff', { align: 'center', font: 'bold' });
         cv.xf(1, 0, 0).append(sr).xf();
       } else {
-        if (hasFrame) cv.image(VID, 0, 0, 1600, 520);
+        if (hasFrame) {
+          const s = Math.min(1600 / vw, 520 / vh);
+          const w = Math.round(vw * s), h = Math.round(vh * s);
+          cv.image(VID, Math.round((1600 - w) / 2), Math.round((520 - h) / 2), w, h);
+        }
         if (msg) cv.text(msg, 800, 260, 28, '#ffffff', { align: 'center', font: 'bold' });
       }
       return ui.image('PLAY_GFX', cv);
     }
     ctx.loop('PLAY', 25, render);
 
-    /* ---------- diagnostics screen: draw the scan as text to photograph ---------- */
-    let dsr = null;
+    /* ---------- diagnostics screen: the scan as text (also on the phone page) ---------- */
     function renderDiag() {
-      const cv = ctx.canvas(1600, 520).clear('#0a0a0a');
-      const pl = cv.place;
+      const cv = ctx.canvas(1600, 520).clear('#101418');
       const lines = [];
       for (const l of diagLines) for (const part of String(l).split('\n')) lines.push(part);
-      const draw = (api, W, H) => {
-        let y = 18;
-        api.text('Car TV - Diagnostics (photograph this)', 14, y, 20, '#4fd1c5', { font: 'bold' });
-        y += 30;
-        for (const ln of lines) {
-          if (y > H - 8) break;
-          api.text(ln.slice(0, 120), 14, y, 15, '#e5e5e5');
-          y += 19;
-        }
-      };
-      if (pl && pl.full) {
-        if (!dsr || dsr.w !== pl.w || dsr.h !== pl.h) dsr = new Recorder(pl.w, pl.h);
-        dsr.reset();
-        dsr.fillRect(0, 0, pl.w, pl.h, '#0a0a0a');
-        draw(dsr, pl.w, pl.h);
-        cv.xf(1, 0, 0).append(dsr).xf();
-      } else {
-        draw(cv, 1600, 520);
+      cv.text('Diagnostics - ' + phoneLine(), 24, 34, 24, '#f4a63c', { font: 'bold' });
+      let y = 66, x = 24;
+      for (const ln of lines) {
+        if (y > 510) { if (x > 24) break; x = 820; y = 66; }
+        cv.text(ln.slice(0, 70), x, y, 18, '#e8eaed');
+        y += 23;
       }
       return ui.image('DIAG_GFX', cv);
     }
     ctx.loop('DIAG', 2, renderDiag);
 
     await loadChannels();
-    settings.onChange((k) => {
-      if (k === 'playlistUrl') loadChannels();
-      if ((k === 'surface' || k === 'maxHeight') && running) startPlayer();
-    });
-    log.info('cartv started');
+    settings.onChange((k) => { if ((k === 'surface' || k === 'maxHeight' || k === 'audio') && running) startPlayer(); });
+    log.info('cartv started; ffmpeg ' + FFMPEG + '; ' + phoneLine());
   },
 });

@@ -43,7 +43,7 @@ function fetch(url, opts = {}) {
     const req = mod.get(url, (r) => {
       if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
         r.resume();
-        return res(fetch(new URL(r.headers.location, url).toString(), opts));
+        return res(fetch(require('url').resolve(url, r.headers.location), opts));
       }
       if (r.statusCode !== 200) { r.resume(); return rej(new Error('http ' + r.statusCode + ' for ' + url)); }
       let body = '';

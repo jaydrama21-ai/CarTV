@@ -71,8 +71,16 @@ async function collect(opts = {}) {
   add('default route', (tryRead('/proc/net/route') || '').split('\n').slice(1).some((r) => r.split(/\s+/)[1] === '00000000') ? 'yes' : 'none');
   add('connman', procs(['connman']).join(''));
 
+  // --- can names be resolved (streams need it) ---
+  add('dns github.com', await new Promise((res) => {
+    try { require('dns').lookup('github.com', (e, a) => res(e ? 'FAILED ' + e.code : a)); } catch (e) { res('FAILED ' + e.message); }
+    setTimeout(() => res('FAILED timeout'), 5000);
+  }));
+  add('addresses', Object.keys(os.networkInterfaces()).map((n) => n + '=' + (os.networkInterfaces()[n] || []).filter((a) => a.family === 'IPv4').map((a) => a.address).join('/')).join('  '));
+
   // --- a couple of safe command probes (ok if they fail) ---
   if (opts.probeCommands) {
+    add('ffmpeg runs', (await run(opts.ffmpeg || 'ffmpeg', ['-hide_banner', '-version'], 5000)).split('\n')[0]);
     add('aplay -l', await run('aplay', ['-l'], 4000));
     add('ffmpeg devices', await run(opts.ffmpeg || 'ffmpeg', ['-hide_banner', '-devices'], 5000));
   }

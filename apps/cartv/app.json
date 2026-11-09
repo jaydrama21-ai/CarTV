@@ -1,8 +1,8 @@
 {
   "id": "cartv",
   "title": "Car TV",
-  "description": "Live TV / IPTV and web video on the center screen: play an m3u playlist or a pasted URL (YouTube and many sites via yt-dlp), decoded on the head unit with a bundled ffmpeg and drawn on the renderer. Parked-only by default",
-  "version": "0.1.6",
+  "description": "Live TV / IPTV and web video on the center screen. Paste a playlist or stream URL from your phone (the app shows the address to open), pick a channel there or on the screen. Decoded on the head unit with a bundled ffmpeg. Parked-only by default",
+  "version": "0.2.0",
   "vendor": "custom",
   "loggingId": "OA9V",
   "maxDiskUsage": 209715200,
@@ -43,14 +43,19 @@
           "Next channel"
         ],
         [
-          "button",
-          "BTN_DIAG",
-          "Diagnostics"
-        ],
-        [
           "text",
           "MENU_INFO",
           ""
+        ],
+        [
+          "text",
+          "PHONE_INFO",
+          ""
+        ],
+        [
+          "button",
+          "BTN_DIAG",
+          "Diagnostics"
         ]
       ]
     },
@@ -97,12 +102,6 @@
       "label": "Parked only (stops video while driving)",
       "type": "bool",
       "default": true
-    },
-    {
-      "key": "playlistUrl",
-      "label": "Playlist (m3u / Xtream URL) or stream URL",
-      "type": "text",
-      "default": ""
     },
     {
       "key": "maxHeight",
@@ -155,28 +154,6 @@
           "Car speakers (experimental)"
         ]
       ]
-    },
-    {
-      "key": "audioBackend",
-      "label": "Audio backend",
-      "type": "choice",
-      "default": "alsa",
-      "options": [
-        [
-          "alsa",
-          "ALSA"
-        ],
-        [
-          "pulse",
-          "PulseAudio"
-        ]
-      ]
-    },
-    {
-      "key": "audioDevice",
-      "label": "Audio device (set from recon)",
-      "type": "text",
-      "default": "default"
     }
   ]
 }

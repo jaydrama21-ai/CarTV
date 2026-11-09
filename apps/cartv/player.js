@@ -59,7 +59,8 @@ class Player extends EventEmitter {
     if (/^https?:\/\//i.test(this.o.input)) {
       a.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '2');
     }
-    a.push(...this.o.inputArgs, '-i', this.o.input);
+    // -re: read at the stream's own speed, so a file or an on-demand video plays in real time
+    a.push('-re', ...this.o.inputArgs, '-i', this.o.input);
     // video output: raw frames to stdout
     a.push('-map', '0:v:0', '-vf', this._vf(), '-pix_fmt', this.o.pixfmt, '-f', 'rawvideo', '-');
     // optional audio output straight to the car's audio device, in the SAME ffmpeg process, so one
