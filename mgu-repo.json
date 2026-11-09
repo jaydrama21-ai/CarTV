@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "apps": {
+    "path": "apps/*",
+    "manifest": "app.json",
+    "icon": "icon.png",
+    "mguHmi": ["ID7"],
+    "build": {
+      "python": "kit/tools/build.py",
+      "args": ["{id}"],
+      "sdk": "oap-sdk",
+      "output": "dist/{id}@{version}.tgz",
+      "network": ["github.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com"]
+    }
+  }
+}

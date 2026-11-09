@@ -1,0 +1,62 @@
+{
+  "id": "cartv",
+  "title": "Car TV",
+  "description": "Live TV / IPTV and web video on the center screen: play an m3u playlist or a pasted URL (YouTube and many sites via yt-dlp), decoded on the head unit with a bundled ffmpeg and drawn on the renderer. Parked-only by default",
+  "version": "0.1.0",
+  "vendor": "custom",
+  "loggingId": "OA9V",
+  "maxDiskUsage": 209715200,
+  "iconGlyph": "tv",
+  "assets": [
+    {
+      "file": "ffmpeg",
+      "exec": true,
+      "sha256": "ed652b2f32e0851d1946894fb8333f5b677c1b2ce6b9d187910a67f8b99da028",
+      "url": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64"
+    }
+  ],
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "statusCarSpeed2": "rs"
+    },
+    "de.bmw.infotainment.controlelements.FrontCCU": {
+      "statusRotaryEncoderState": "rs",
+      "statusPushButtonsState": "rs"
+    }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "menu",
+      "title": "Car TV",
+      "settings": true,
+      "items": [
+        ["button", "BTN_PLAY", "Play"],
+        ["button", "BTN_NEXTCH", "Next channel"],
+        ["text", "MENU_INFO", ""]
+      ]
+    },
+    {
+      "name": "PLAY",
+      "kind": "canvas",
+      "title": "Car TV",
+      "chrome": false,
+      "buttons": [
+        ["BTN_BACK", "Back"],
+        ["BTN_PREV", "Channel -"],
+        ["BTN_NEXT", "Channel +"],
+        ["BTN_PAUSE", "Pause"]
+      ]
+    }
+  ],
+  "settings": [
+    {"key": "parkedOnly", "label": "Parked only (stops video while driving)", "type": "bool", "default": true},
+    {"key": "playlistUrl", "label": "Playlist (m3u / Xtream URL) or stream URL", "type": "text", "default": ""},
+    {"key": "maxHeight", "label": "Max resolution", "type": "choice", "default": "720",
+      "options": [["480", "480p (lightest)"], ["720", "720p"], ["1080", "1080p (heaviest)"]]},
+    {"key": "surface", "label": "Picture size", "type": "choice", "default": "fit",
+      "options": [["fit", "Fit (letterbox 16:9)"], ["full", "Fill the whole screen"]]},
+    {"key": "audio", "label": "Audio out", "type": "choice", "default": "off",
+      "options": [["off", "Off (picture only)"], ["car", "Car speakers (experimental)"]]}
+  ]
+}
