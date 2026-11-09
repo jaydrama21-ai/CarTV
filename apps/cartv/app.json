@@ -2,7 +2,7 @@
   "id": "cartv",
   "title": "Car TV",
   "description": "Live TV / IPTV and web video on the center screen: play an m3u playlist or a pasted URL (YouTube and many sites via yt-dlp), decoded on the head unit with a bundled ffmpeg and drawn on the renderer. Parked-only by default",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "vendor": "custom",
   "loggingId": "OA9V",
   "maxDiskUsage": 209715200,
@@ -57,6 +57,9 @@
     {"key": "surface", "label": "Picture size", "type": "choice", "default": "fit",
       "options": [["fit", "Fit (letterbox 16:9)"], ["full", "Fill the whole screen"]]},
     {"key": "audio", "label": "Audio out", "type": "choice", "default": "off",
-      "options": [["off", "Off (picture only)"], ["car", "Car speakers (experimental)"]]}
+      "options": [["off", "Off (picture only)"], ["car", "Car speakers (experimental)"]]},
+    {"key": "audioBackend", "label": "Audio backend", "type": "choice", "default": "alsa",
+      "options": [["alsa", "ALSA"], ["pulse", "PulseAudio"]]},
+    {"key": "audioDevice", "label": "Audio device (set from recon)", "type": "text", "default": "default"}
   ]
 }

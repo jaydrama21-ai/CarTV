@@ -60,7 +60,15 @@ class Player extends EventEmitter {
       a.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '2');
     }
     a.push(...this.o.inputArgs, '-i', this.o.input);
-    a.push('-an', '-vf', this._vf(), '-pix_fmt', this.o.pixfmt, '-f', 'rawvideo', '-');
+    // video output: raw frames to stdout
+    a.push('-map', '0:v:0', '-vf', this._vf(), '-pix_fmt', this.o.pixfmt, '-f', 'rawvideo', '-');
+    // optional audio output straight to the car's audio device, in the SAME ffmpeg process, so one
+    // network fetch feeds both and picture/sound stay in sync. Device + backend come from recon.
+    if (this.o.audioDevice) {
+      a.push('-map', '0:a:0?');
+      if (this.o.audioBackend === 'pulse') a.push('-f', 'pulse', this.o.audioDevice);
+      else a.push('-f', 'alsa', this.o.audioDevice);
+    }
     return a;
   }
 

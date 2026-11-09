@@ -74,10 +74,14 @@ mgu.run({
         const r = await sources.resolve(ch.url, { maxHeight: Number(settings.get('maxHeight')) || 720 });
         input = r.input; inputArgs = r.inputArgs || [];
       } catch (e) { status = 'Resolve failed: ' + e.message; log.warn('resolve: ' + e.message); return; }
+      const audioOn = settings.get('audio') === 'car';
       player = new Player({
         ffmpeg: FFMPEG,
         input, inputArgs, width: DW, height: DH, fps: 25, pixfmt: 'rgba',
         fit: settings.get('surface') === 'full' ? 'full' : 'fit',
+        // audio to the car speakers (experimental): device + backend come from the on-car recon.
+        audioDevice: audioOn ? (settings.get('audioDevice') || 'default') : null,
+        audioBackend: settings.get('audioBackend') || 'alsa',
         onFrame: (buf) => { setImage(VID, DW, DH, buf); hasFrame = true; vw = DW; vh = DH; },
       });
       player.on('stall', () => { if (!hasFrame) status = 'Buffering...'; log.info('stall'); });
