@@ -31,11 +31,25 @@ const DW = 1280, DH = 720;     // decode size (16:9); the canvas scales it to th
 // the bundled static ffmpeg sits next to this file (build.py copies the asset into javascript/);
 // fall back to one on PATH if the bundle is missing.
 const BUNDLED_FFMPEG = path.join(__dirname, 'ffmpeg');
-const FFMPEG = fs.existsSync(BUNDLED_FFMPEG) ? BUNDLED_FFMPEG : 'ffmpeg';
+let FFMPEG = 'ffmpeg';
+// make sure the bundle is runnable: the installer may drop the exec bit, and the app folder may be
+// read-only, in which case a copy in the app's data folder is used instead.
+function prepareFfmpeg(dataDir, log) {
+  if (!fs.existsSync(BUNDLED_FFMPEG)) return;
+  try { fs.accessSync(BUNDLED_FFMPEG, fs.constants.X_OK); FFMPEG = BUNDLED_FFMPEG; return; } catch (_) {}
+  try { fs.chmodSync(BUNDLED_FFMPEG, 0o755); FFMPEG = BUNDLED_FFMPEG; return; } catch (_) {}
+  try {
+    const copy = path.join(dataDir, 'ffmpeg');
+    if (!fs.existsSync(copy) || fs.statSync(copy).size !== fs.statSync(BUNDLED_FFMPEG).size) fs.copyFileSync(BUNDLED_FFMPEG, copy);
+    fs.chmodSync(copy, 0o755);
+    FFMPEG = copy;
+  } catch (e) { log.warn('ffmpeg not runnable: ' + e.message); FFMPEG = BUNDLED_FFMPEG; }
+}
 
 mgu.run({
   async start(ctx) {
     const { ui, settings, log } = ctx;
+    prepareFfmpeg(ctx.dataDir, log);
     const parked = Parked.watch(ctx, log);
     const blocked = () => settings.get('parkedOnly') !== false && parked.moving();
 

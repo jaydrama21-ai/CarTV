@@ -445,14 +445,15 @@ def build(app_id, language='en', preview_only=False):
     json.dump({'rhmiLoadingEnabled': True, 'entryPointLoadingEnabled': True, 'settings': {app_id: spec.get('config', {})}},
               open(os.path.join(src, 'config', 'base.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     # app code
-    fetch_assets(adir, spec.get('assets', []))
-    # executable asset binaries (e.g. a bundled static ffmpeg): copy as-is into javascript/ and make runnable.
-    # The generic loop below only handles .js/.wasm/.wad, so an extension-less binary needs this.
-    for a in spec.get('assets', []):
+    # Executable asset binaries (e.g. a bundled static ffmpeg) are fetched straight into javascript/ and made
+    # runnable: the generic loop below only handles .js/.wasm/.wad, and fetching into the app folder first
+    # and copying would write the file twice (the Store caps what a build may write at maxDiskUsage).
+    assets = spec.get('assets', [])
+    fetch_assets(adir, [a for a in assets if not a.get('exec')])
+    fetch_assets(os.path.join(src, 'javascript'), [a for a in assets if a.get('exec')])
+    for a in assets:
         if a.get('exec'):
-            d = os.path.join(src, 'javascript', a['file'])
-            shutil.copy(os.path.join(adir, a['file']), d)
-            os.chmod(d, 0o755)
+            os.chmod(os.path.join(src, 'javascript', a['file']), 0o755)
             print('  bundled executable asset %s' % a['file'])
     for f in os.listdir(adir):
         if f.endswith('.js'):
