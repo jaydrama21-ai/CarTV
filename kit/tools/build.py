@@ -148,6 +148,10 @@ def fetch_assets(adir, assets):
             sys.exit('%s: download does not match its SHA-256' % a['url'])
         if a.get('zipMember'):
             data = zipfile.ZipFile(io.BytesIO(data)).read(a['zipMember'])
+        if a.get('gzSha256'):  # a gzip-compressed download: check it, then unpack in memory
+            if sha(data) != a['gzSha256']:
+                sys.exit('%s: download does not match its SHA-256' % a['url'])
+            data = gzip.decompress(data)
         if sha(data) != a['sha256']:
             sys.exit('%s: file does not match its SHA-256' % a['file'])
         open(dst, 'wb').write(data)
