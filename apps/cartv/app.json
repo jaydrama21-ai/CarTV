@@ -2,7 +2,7 @@
   "id": "cartv",
   "title": "Car TV",
   "description": "Live TV / IPTV and web video on the center screen: play an m3u playlist or a pasted URL (YouTube and many sites via yt-dlp), decoded on the head unit with a bundled ffmpeg and drawn on the renderer. Parked-only by default",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "vendor": "custom",
   "loggingId": "OA9V",
   "maxDiskUsage": 209715200,
@@ -33,6 +33,7 @@
       "items": [
         ["button", "BTN_PLAY", "Play"],
         ["button", "BTN_NEXTCH", "Next channel"],
+        ["button", "BTN_DIAG", "Diagnostics"],
         ["text", "MENU_INFO", ""]
       ]
     },
@@ -46,6 +47,15 @@
         ["BTN_PREV", "Channel -"],
         ["BTN_NEXT", "Channel +"],
         ["BTN_PAUSE", "Pause"]
+      ]
+    },
+    {
+      "name": "DIAG",
+      "kind": "canvas",
+      "title": "Diagnostics",
+      "chrome": true,
+      "buttons": [
+        ["BTN_DBACK", "Back"]
       ]
     }
   ],

@@ -23,6 +23,7 @@ const Parked = require('./kit/parked');
 const { Player } = require('./player');
 const sources = require('./sources');
 const m3u = require('./m3u');
+const diag = require('./diag');
 
 const VID = 1;                 // image slot for the latest decoded frame
 const DW = 1280, DH = 720;     // decode size (16:9); the canvas scales it to the screen
@@ -44,6 +45,7 @@ mgu.run({
     let hasFrame = false, vw = DW, vh = DH;
     let status = 'Loading channels...';
     let paused = false;
+    let diagLines = ['Press Diagnostics to scan the unit...'];
 
     const current = () => channels[idx] || null;
 
@@ -100,6 +102,17 @@ mgu.run({
     ui.onClick('BTN_PLAY', () => { if (!blocked() && channels.length) ui.open('PLAY'); });
     ui.onClick('BTN_NEXTCH', () => { if (channels.length) { idx = (idx + 1) % channels.length; menu(); } });
 
+    /* ---------- on-unit diagnostics (no laptop/SSH): scan + show on screen ---------- */
+    ui.onClick('BTN_DIAG', async () => {
+      diagLines = ['Scanning the unit...'];
+      ui.open('DIAG');
+      try {
+        diagLines = await diag.collect({ ffmpeg: FFMPEG, probeCommands: true });
+        diagLines.forEach((l) => log.info('DIAG ' + l));
+      } catch (e) { diagLines = ['diag error: ' + e.message]; }
+    });
+    ui.onClick('BTN_DBACK', () => ui.open('MAIN'));
+
     /* ---------- play-screen buttons ---------- */
     ui.onClick('BTN_BACK', () => ui.open('MAIN'));
     ui.onClick('BTN_PREV', () => { if (channels.length) { idx = (idx - 1 + channels.length) % channels.length; startPlayer(); } });
@@ -148,6 +161,36 @@ mgu.run({
       return ui.image('PLAY_GFX', cv);
     }
     ctx.loop('PLAY', 25, render);
+
+    /* ---------- diagnostics screen: draw the scan as text to photograph ---------- */
+    let dsr = null;
+    function renderDiag() {
+      const cv = ctx.canvas(1600, 520).clear('#0a0a0a');
+      const pl = cv.place;
+      const lines = [];
+      for (const l of diagLines) for (const part of String(l).split('\n')) lines.push(part);
+      const draw = (api, W, H) => {
+        let y = 18;
+        api.text('Car TV - Diagnostics (photograph this)', 14, y, 20, '#4fd1c5', { font: 'bold' });
+        y += 30;
+        for (const ln of lines) {
+          if (y > H - 8) break;
+          api.text(ln.slice(0, 120), 14, y, 15, '#e5e5e5');
+          y += 19;
+        }
+      };
+      if (pl && pl.full) {
+        if (!dsr || dsr.w !== pl.w || dsr.h !== pl.h) dsr = new Recorder(pl.w, pl.h);
+        dsr.reset();
+        dsr.fillRect(0, 0, pl.w, pl.h, '#0a0a0a');
+        draw(dsr, pl.w, pl.h);
+        cv.xf(1, 0, 0).append(dsr).xf();
+      } else {
+        draw(cv, 1600, 520);
+      }
+      return ui.image('DIAG_GFX', cv);
+    }
+    ctx.loop('DIAG', 2, renderDiag);
 
     await loadChannels();
     settings.onChange((k) => {
