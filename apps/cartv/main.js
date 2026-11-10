@@ -11,8 +11,9 @@
  *   MAIN  menu: Play, Next channel, status line, settings (playlist URL, etc.)
  *   PLAY  the video alone on the whole screen; BACK returns, Channel -/+ retune.
  *
- * Source of channels: the "playlistUrl" setting - an m3u/Xtream playlist, or a
- * single stream/HLS URL, or a "ytdlp:<url>" to resolve YouTube and ~1800 sites.
+ * Source of channels: an m3u/Xtream playlist, a single stream/HLS URL, or an ordinary video
+ * page's address - sources.js/extract.js scan a page for the stream it already names (not for
+ * YouTube, which only hands streams to signed-in viewers in its own players).
  */
 
 const fs = require('fs');

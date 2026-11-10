@@ -1,7 +1,10 @@
 # Car TV — live TV / IPTV & web video on the iDrive 7 (MGU)
 
 A custom OAP app for the rooted BMW MGU (iDrive 7) head unit. It plays an **m3u/Xtream
-playlist**, a **direct HLS stream**,,
+playlist**, a **direct HLS/stream URL**, or an **ordinary video page's address** (it scans the
+page for the stream it already names - no JavaScript engine on board, so it won't catch a player
+a page only builds at runtime, and it never tries to get past a sign-in wall, a bot-check, or
+DRM — that rules out YouTube and similar platforms by design, not by bug),
 decoding on the head unit with a **bundled static ffmpeg** and drawing the picture on the
 center screen through the GPU renderer. **Parked-only by default.**
 
@@ -14,7 +17,7 @@ center screen through the GPU renderer. **Parked-only by default.**
 2. Install **Car TV** from Available. The unit builds it from source with your `oap-sdk` and
    pulls the bundled `ffmpeg` (a static x86-64 build) at build time.
 3. Open **Car TV**. The menu shows a page address and a pairing code. Open the page on your phone,
-   type the code, and paste a playlist or stream URL there; then press **Play** (while parked).
+   type the code, and paste a playlist, stream, or video-page URL there; then press **Play** (while parked).
 
 The head unit's firewall lets nothing connect in to an app, so the phone and the app meet at a public
 message relay (ntfy.sh). Messages are AES-256-GCM encrypted with a key derived from the pairing code;
