@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Car TV remote</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 16px -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; background: #101418; color: #e8eaed; max-width: 640px; margin-inline: auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: #9aa0a6; font-weight: 600; }
+  textarea, input, select { width: 100%; box-sizing: border-box; font: inherit; padding: 11px; border-radius: 8px; border: 1px solid #3c4043; background: #1b2026; color: #e8eaed; }
+  textarea { height: 92px; }
+  button { font: inherit; padding: 11px 15px; border-radius: 8px; border: 0; background: #f4a63c; color: #111; font-weight: 600; margin: 8px 8px 0 0; }
+  button.g { background: #2b3138; color: #e8eaed; }
+  #st { color: #f4a63c; margin: 6px 0 0; min-height: 22px; }
+  #net { color: #9aa0a6; font-size: 13px; margin-top: 2px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #1b2026; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 340px; overflow: auto; margin: 8px 0 0; }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  #code { text-transform: uppercase; letter-spacing: 2px; font-weight: 600; }
+  small { color: #9aa0a6; }
+</style>
+</head>
+<body>
+<h1>Car TV remote</h1>
+<small>Type the code shown on the Car TV menu in the car. Everything you send is encrypted with it.</small>
+<div class="row" style="margin-top:10px">
+  <input id="code" placeholder="ABCD-EFGH-JK" autocapitalize="characters" autocomplete="off" spellcheck="false">
+  <button style="flex:0 0 auto;margin:0" onclick="connect()">Connect</button>
+</div>
+<div id="st"></div><div id="net"></div>
+
+<h2>Playlist or stream</h2>
+<textarea id="src" placeholder="Paste a playlist URL (m3u / Xtream), a stream URL (.m3u8), or ytdlp:https://…"></textarea>
+<button onclick="sendSrc()">Send to the car</button>
+
+<h2>Channel</h2>
+<input id="q" placeholder="Channel name or number">
+<button onclick="cmd({t:'play',q:val('q')})">Play</button>
+<button class="g" onclick="cmd({t:'prev'})">−</button>
+<button class="g" onclick="cmd({t:'next'})">+</button>
+<button class="g" onclick="cmd({t:'stop'})">Stop</button>
+
+<h2>Sound (experimental)</h2>
+<div class="row">
+  <select id="ab"><option value="alsa">ALSA</option><option value="pulse">PulseAudio</option></select>
+  <input id="ad" placeholder="device, e.g. default or hw:0,0" autocapitalize="none" autocomplete="off" spellcheck="false">
+</div>
+<button class="g" onclick="cmd({t:'audio',backend:val('ab'),device:val('ad')})">Save sound device</button>
+
+<h2>Diagnostics</h2>
+<button class="g" onclick="ask('diag')">Scan the car</button>
+<button class="g" onclick="ask('log')">Get the log</button>
+<button class="g" onclick="copy()">Copy</button>
+<pre id="out"></pre>
+
+<script>
+const RELAY = 'https://ntfy.sh';
+let K = null, since = '30s', timer = null, texts = {};
+const $ = (id) => document.getElementById(id);
+const val = (id) => $(id).value.trim();
+const enc = new TextEncoder(), dec = new TextDecoder();
+const hex = (buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+const sha = (s) => crypto.subtle.digest('SHA-256', enc.encode(s));
+const b64 = (u8) => { let s = ''; u8.forEach((b) => s += String.fromCharCode(b)); return btoa(s); };
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function keys(code) {
+  return {
+    in: 'cartv' + hex(await sha('in:' + code)).slice(0, 40),
+    out: 'cartv' + hex(await sha('out:' + code)).slice(0, 40),
+    key: await crypto.subtle.importKey('raw', await sha('cartv-key:' + code), 'AES-GCM', false, ['encrypt', 'decrypt']),
+  };
+}
+async function seal(obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, K.key, enc.encode(JSON.stringify(obj))));
+  const all = new Uint8Array(12 + ct.length); all.set(iv); all.set(ct, 12);
+  return b64(all);
+}
+async function unseal(s) {
+  const raw = unb64(s);
+  return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, K.key, raw.slice(12))));
+}
+async function cmd(obj) {
+  if (!K) { $('st').textContent = 'Enter the code from the car first'; return; }
+  try {
+    const r = await fetch(RELAY + '/' + K.in, { method: 'POST', body: await seal(obj) });
+    if (!r.ok) throw new Error('relay answered ' + r.status);
+    $('net').textContent = 'Sent. The car picks it up within about 10 seconds.';
+  } catch (e) { $('net').textContent = 'Not sent: ' + e.message; }
+}
+function sendSrc() {
+  const v = val('src');
+  if (v.length > 2500) { $('net').textContent = 'Too long to send: paste the playlist\'s URL, not its contents.'; return; }
+  cmd({ t: 'src', v });
+}
+function ask(kind) { $('out').textContent = 'Asked the car…'; cmd({ t: kind }); }
+function copy() { navigator.clipboard && navigator.clipboard.writeText($('out').textContent); }
+
+async function poll() {
+  if (!K) return;
+  try {
+    const r = await fetch(RELAY + '/' + K.out + '/json?poll=1&since=' + since);
+    const lines = (await r.text()).split('\n').filter((l) => l.trim());
+    for (const l of lines) {
+      const m = JSON.parse(l);
+      if (m.event !== 'message') continue;
+      since = m.id;
+      let o; try { o = await unseal(m.message); } catch (e) { continue; }
+      if (o.t === 'status') {
+        $('st').textContent = o.v + (o.n ? '  (' + (o.idx + 1) + '/' + o.n + (o.name ? ': ' + o.name : '') + ')' : '');
+        if (o.audioDevice !== undefined && document.activeElement !== $('ad')) { $('ad').value = o.audioDevice; $('ab').value = o.audioBackend || 'alsa'; }
+      } else if (o.t === 'text') {
+        const key = o.k + o.s;
+        (texts[key] = texts[key] || [])[o.i] = o.v;
+        $('out').textContent = texts[key].join('');
+      }
+    }
+  } catch (e) { $('net').textContent = 'Cannot reach the relay: ' + e.message; }
+}
+async function connect() {
+  const code = val('code').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 8) { $('st').textContent = 'That code looks too short'; return; }
+  localStorage.setItem('cartv-code', code);
+  K = await keys(code);
+  since = '30s';
+  $('st').textContent = 'Waiting for the car…';
+  clearInterval(timer); timer = setInterval(poll, 4000);
+  cmd({ t: 'hello' });
+}
+const saved = localStorage.getItem('cartv-code');
+if (saved) { $('code').value = saved; connect(); }
+</script>
+</body>
+</html>

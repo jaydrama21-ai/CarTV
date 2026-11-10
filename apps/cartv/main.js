@@ -24,7 +24,7 @@ const { Player } = require('./player');
 const sources = require('./sources');
 const m3u = require('./m3u');
 const diag = require('./diag');
-const remote = require('./remote');
+const relay = require('./relay');
 
 const VID = 1;                 // image slot for the latest decoded frame
 const DW = 1280, DH = 720;     // decode size (16:9); the canvas scales it to the screen
@@ -137,7 +137,9 @@ mgu.run({
       p.start();
     }
 
-    /* ---------- phone remote: paste the playlist, pick a channel, read diagnostics ---------- */
+    /* ---------- phone remote: nothing can connect in to the unit, so both sides meet at a relay ---------- */
+    const PAGE = 'jaydrama21-ai.github.io/CarTV';
+    if (!config.code) { config.code = relay.newCode(); saveConfig(); }
     async function runDiag() {
       diagLines = ['Scanning the unit...'];
       try {
@@ -146,43 +148,53 @@ mgu.run({
       } catch (e) { diagLines = ['diag error: ' + e.message]; }
     }
     let phone = null;
+    const statusMsg = () => ({
+      t: 'status',
+      v: blocked() ? 'Parked only - stop the car to watch' : status,
+      n: channels.length, idx, name: (current() && current().name) || '',
+      audioDevice: config.audioDevice, audioBackend: config.audioBackend,
+    });
+    const reply = (later) => { if (phone) { phone.send(statusMsg()); if (later) setTimeout(() => phone && phone.send(statusMsg()), later); } };
+    function tune(i) {
+      if (!channels.length) return;
+      idx = ((i % channels.length) + channels.length) % channels.length;
+      paused = false;
+      if (blocked()) return;
+      status = 'Tuning ' + ((current() && current().name) || '') + '...';
+      if (ui.isVisible('PLAY')) startPlayer(); else ui.open('PLAY');
+    }
+    function onPhone(m) {
+      log.info('phone: ' + m.t);
+      if (m.t === 'hello') return reply();
+      if (m.t === 'src') {
+        config.source = String(m.v || '').trim(); saveConfig(); idx = 0;
+        return loadChannels().then(() => reply());
+      }
+      if (m.t === 'play') {
+        const q = String(m.q || '').trim().toLowerCase();
+        let i = idx;
+        if (/^\d+$/.test(q)) i = Number(q) - 1;
+        else if (q) { const f = channels.findIndex((c) => (c.name || '').toLowerCase().indexOf(q) >= 0); if (f < 0) { status = 'No channel matches "' + q + '"'; return reply(); } i = f; }
+        tune(i); return reply(8000);
+      }
+      if (m.t === 'next') { tune(idx + 1); return reply(8000); }
+      if (m.t === 'prev') { tune(idx - 1); return reply(8000); }
+      if (m.t === 'stop') { paused = true; stopPlayer(); status = 'Stopped'; return reply(); }
+      if (m.t === 'audio') {
+        if (m.device !== undefined) config.audioDevice = String(m.device || 'default').trim();
+        if (m.backend === 'alsa' || m.backend === 'pulse') config.audioBackend = m.backend;
+        saveConfig(); if (player) startPlayer();
+        return reply();
+      }
+      if (m.t === 'diag') return runDiag().then(() => phone.sendText('diag', diagLines.join('\n')));
+      if (m.t === 'log') return phone.sendText('log', ring.join('\n'));
+    }
     try {
-      phone = remote.start({
-        log: (m) => log.warn(m),
-        state: () => ({
-          status: blocked() ? 'Parked only - stop the car to watch' : status,
-          playing: !!player && hasFrame,
-          idx,
-          channels: channels.map((c) => c.name || c.url),
-          source: config.source,
-          audioDevice: config.audioDevice,
-          audioBackend: config.audioBackend,
-          diag: diagLines,
-          log: ring,
-        }),
-        setSource: (text) => { config.source = String(text || '').trim(); saveConfig(); idx = 0; loadChannels(); },
-        play: (i) => {
-          if (!channels.length) return;
-          idx = Math.max(0, Math.min(channels.length - 1, i | 0));
-          paused = false;
-          if (blocked()) return;
-          if (ui.isVisible('PLAY')) startPlayer(); else ui.open('PLAY');
-        },
-        stop: () => { paused = true; stopPlayer(); status = 'Stopped'; },
-        diag: () => { runDiag(); },
-        setAudio: (j) => {
-          if (j.device !== undefined) config.audioDevice = String(j.device || 'default').trim();
-          if (j.backend === 'alsa' || j.backend === 'pulse') config.audioBackend = j.backend;
-          saveConfig();
-          if (player) startPlayer();
-        },
-      });
+      phone = relay.start({ code: config.code, base: process.env.CARTV_RELAY, log: (m) => log.warn(m), onMessage: onPhone });
     } catch (e) { log.warn('phone remote not started: ' + e.message); }
     const phoneLine = () => {
-      const a = remote.addresses();
-      if (!phone) return 'Phone remote unavailable';
-      if (!a.length) return 'Phone remote: connect the car to your phone hotspot';
-      return 'On your phone open  http://' + a[0].address + ':' + phone.port;
+      const st = phone ? phone.state() : { ok: false, error: 'not started' };
+      return 'Phone: ' + PAGE + '   code ' + relay.pretty(config.code) + (st.ok ? '' : '   (offline' + (st.error ? ': ' + st.error.slice(0, 40) : '') + ')');
     };
 
     /* ---------- menu ---------- */
@@ -253,7 +265,7 @@ mgu.run({
       const cv = ctx.canvas(1600, 520).clear('#101418');
       const lines = [];
       for (const l of diagLines) for (const part of String(l).split('\n')) lines.push(part);
-      cv.text('Diagnostics - ' + phoneLine(), 24, 34, 24, '#f4a63c', { font: 'bold' });
+      cv.text(phoneLine(), 24, 34, 24, '#f4a63c', { font: 'bold' });
       let y = 66, x = 24;
       for (const ln of lines) {
         if (y > 510) { if (x > 24) break; x = 820; y = 66; }

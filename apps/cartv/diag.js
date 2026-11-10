@@ -76,6 +76,13 @@ async function collect(opts = {}) {
     try { require('dns').lookup('github.com', (e, a) => res(e ? 'FAILED ' + e.code : a)); } catch (e) { res('FAILED ' + e.message); }
     setTimeout(() => res('FAILED timeout'), 5000);
   }));
+  add('https relay', await new Promise((res) => {
+    try {
+      const rq = require('https').get('https://ntfy.sh/v1/health', (r) => { r.resume(); res('answered ' + r.statusCode); });
+      rq.on('error', (e) => res('FAILED ' + (e.code || e.message)));
+      rq.setTimeout(8000, () => { rq.destroy(); res('FAILED timeout'); });
+    } catch (e) { res('FAILED ' + e.message); }
+  }));
   add('addresses', Object.keys(os.networkInterfaces()).map((n) => n + '=' + (os.networkInterfaces()[n] || []).filter((a) => a.family === 'IPv4').map((a) => a.address).join('/')).join('  '));
 
   // --- a couple of safe command probes (ok if they fail) ---

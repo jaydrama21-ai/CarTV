@@ -13,7 +13,12 @@ center screen through the GPU renderer. **Parked-only by default.**
 1. In the Store → **Settings → Sources**, add this repo as `owner/repo`.
 2. Install **Car TV** from Available. The unit builds it from source with your `oap-sdk` and
    pulls the bundled `ffmpeg` (a static x86-64 build) at build time.
-3. Open **Car TV → Settings**, paste a playlist or stream URL, press **Play** (while parked).
+3. Open **Car TV**. The menu shows a page address and a pairing code. Open the page on your phone,
+   type the code, and paste a playlist or stream URL there; then press **Play** (while parked).
+
+The head unit's firewall lets nothing connect in to an app, so the phone and the app meet at a public
+message relay (ntfy.sh). Messages are AES-256-GCM encrypted with a key derived from the pairing code;
+the relay only holds ciphertext. The phone page is `docs/index.html` (GitHub Pages).
 
 ## Requirements
 
