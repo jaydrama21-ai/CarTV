@@ -2,7 +2,7 @@
   "id": "cartv",
   "title": "Car TV",
   "description": "Live TV / IPTV and web video on the center screen. Paste a playlist or stream URL from your phone (the menu shows the page and a pairing code), then pick channels from the phone or the screen. Decoded on the head unit with a bundled ffmpeg. Parked-only by default",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "vendor": "custom",
   "loggingId": "OA9V",
   "maxDiskUsage": 209715200,
@@ -51,6 +51,11 @@
         [
           "text",
           "PHONE_INFO",
+          ""
+        ],
+        [
+          "text",
+          "NET_INFO",
           ""
         ],
         [

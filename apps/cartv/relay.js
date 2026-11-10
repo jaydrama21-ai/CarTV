@@ -18,7 +18,7 @@
  */
 
 const crypto = require('crypto');
-const urlmod = require('url');
+const netx = require('./netx');
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no I, L, O, 0, 1
 
@@ -56,25 +56,9 @@ function open(key, b64) {
 }
 
 function request(method, url, body, timeout) {
-  return new Promise(function (resolve, reject) {
-    const u = urlmod.parse(url);
-    const mod = u.protocol === 'http:' ? require('http') : require('https');
-    const req = mod.request({
-      method: method, hostname: u.hostname, port: u.port, path: u.path,
-      headers: body ? { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body) } : {},
-    }, function (res) {
-      let out = '';
-      res.setEncoding('utf8');
-      res.on('data', function (c) { if (out.length < 2000000) out += c; });
-      res.on('end', function () {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(out);
-        else reject(new Error('relay answered ' + res.statusCode));
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(timeout || 15000, function () { req.destroy(new Error('relay timeout')); });
-    if (body) req.write(body);
-    req.end();
+  return netx.request(method, url, body, { timeout: timeout || 15000, maxBytes: 2000000 }).then(function (r) {
+    if (r.status >= 200 && r.status < 300) return r.body;
+    throw new Error('relay answered ' + r.status);
   });
 }
 
@@ -96,6 +80,7 @@ function start(opts) {
     request('GET', base + '/' + t.in + '/json?poll=1&since=' + (since || 'all'), null, 20000).then(function (text) {
       const first = since === null;
       const lines = text.split('\n');
+      const todo = [];
       for (let i = 0; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         let m;
@@ -105,8 +90,12 @@ function start(opts) {
         if (first) continue;   // draining what was there before the app started
         let obj;
         try { obj = open(t.key, m.message); } catch (e) { log('phone message not readable (wrong code?)'); continue; }
-        try { opts.onMessage(obj); } catch (e) { log('phone message failed: ' + e.message); }
+        todo.push(obj);
       }
+      // one at a time, each finished before the next (a new playlist is loaded before "play" is handled)
+      todo.reduce(function (chain, obj) {
+        return chain.then(function () { return opts.onMessage(obj); }).catch(function (e) { log('phone message failed: ' + e.message); });
+      }, Promise.resolve());
       if (first && since === null) since = String(Math.floor(Date.now() / 1000) - 60); // empty topic
       if (!ok) log('phone remote connected');
       ok = true; lastError = '';

@@ -36,23 +36,10 @@ function parse(text) {
   return out;
 }
 
-function fetch(url, opts = {}) {
-  const mod = url.startsWith('https:') ? require('https') : require('http');
-  const timeout = opts.timeout || 15000;
-  return new Promise((res, rej) => {
-    const req = mod.get(url, (r) => {
-      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
-        r.resume();
-        return res(fetch(require('url').resolve(url, r.headers.location), opts));
-      }
-      if (r.statusCode !== 200) { r.resume(); return rej(new Error('http ' + r.statusCode + ' for ' + url)); }
-      let body = '';
-      r.setEncoding('utf8');
-      r.on('data', (c) => (body += c));
-      r.on('end', () => res(body));
-    });
-    req.on('error', rej);
-    req.setTimeout(timeout, () => { req.destroy(new Error('timeout fetching ' + url)); });
+function fetch(url, opts) {
+  return require('./netx').request('GET', url, null, { timeout: (opts && opts.timeout) || 20000, maxBytes: 16 * 1024 * 1024 }).then(function (r) {
+    if (r.status !== 200) throw new Error('http ' + r.status + ' for the playlist');
+    return r.body;
   });
 }
 

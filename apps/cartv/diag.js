@@ -71,18 +71,12 @@ async function collect(opts = {}) {
   add('default route', (tryRead('/proc/net/route') || '').split('\n').slice(1).some((r) => r.split(/\s+/)[1] === '00000000') ? 'yes' : 'none');
   add('connman', procs(['connman']).join(''));
 
-  // --- can names be resolved (streams need it) ---
-  add('dns github.com', await new Promise((res) => {
-    try { require('dns').lookup('github.com', (e, a) => res(e ? 'FAILED ' + e.code : a)); } catch (e) { res('FAILED ' + e.message); }
-    setTimeout(() => res('FAILED timeout'), 5000);
-  }));
-  add('https relay', await new Promise((res) => {
-    try {
-      const rq = require('https').get('https://ntfy.sh/v1/health', (r) => { r.resume(); res('answered ' + r.statusCode); });
-      rq.on('error', (e) => res('FAILED ' + (e.code || e.message)));
-      rq.setTimeout(8000, () => { rq.destroy(); res('FAILED timeout'); });
-    } catch (e) { res('FAILED ' + e.message); }
-  }));
+  // --- internet for this app: the uplink's lease, names through its dns, the relay ---
+  const netx = require('./netx');
+  const l = netx.lease();
+  add('uplink lease', l ? (l.interface + ' ' + l.ip + ' dns ' + (l.dns || []).join(',')) : 'NONE (car offline, or this app is not allowed out)');
+  add('resolve github.com', await netx.resolve('github.com').catch((e) => 'FAILED ' + e.message));
+  add('https relay', await netx.request('GET', 'https://ntfy.sh/v1/health', null, { timeout: 8000 }).then((r) => 'answered ' + r.status).catch((e) => 'FAILED ' + e.message));
   add('addresses', Object.keys(os.networkInterfaces()).map((n) => n + '=' + (os.networkInterfaces()[n] || []).filter((a) => a.family === 'IPv4').map((a) => a.address).join('/')).join('  '));
 
   // --- a couple of safe command probes (ok if they fail) ---

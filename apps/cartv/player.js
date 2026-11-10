@@ -75,7 +75,7 @@ class Player extends EventEmitter {
 
   start() {
     this._stopped = false;
-    this.proc = spawn(this.o.ffmpeg, this._args(), { stdio: ['ignore', 'pipe', 'pipe'] });
+    this.proc = spawn(this.o.ffmpeg, this._args(), { stdio: ['ignore', 'pipe', 'pipe'], env: Object.assign({}, process.env, this.o.env || {}) });
     this._armStall();
     this.emit('start');
 

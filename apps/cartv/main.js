@@ -25,6 +25,7 @@ const sources = require('./sources');
 const m3u = require('./m3u');
 const diag = require('./diag');
 const relay = require('./relay');
+const netx = require('./netx');
 
 const VID = 1;                 // image slot for the latest decoded frame
 const DW = 1280, DH = 720;     // decode size (16:9); the canvas scales it to the screen
@@ -61,6 +62,15 @@ mgu.run({
     const log = { info: (m) => note('info', m), warn: (m) => note('warn', m) };
 
     prepareFfmpeg(ctx.dataDir, log);
+    // names resolve only through the uplink's lease; ffmpeg cannot do that, so it goes through a
+    // small proxy in this process that can
+    netx.init(ctx.dataDir);
+    let proxyEnv = {};
+    netx.startProxy((m) => log.warn(m)).then((port) => {
+      const p = 'http://127.0.0.1:' + port;
+      proxyEnv = { http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p, no_proxy: '', NO_PROXY: '' };
+      log.info('stream proxy on ' + p);
+    }).catch((e) => log.warn('stream proxy not started: ' + e.message));
     const parked = Parked.watch(ctx, ctx.log);
     const blocked = () => settings.get('parkedOnly') !== false && parked.moving();
 
@@ -111,7 +121,7 @@ mgu.run({
       } catch (e) { status = 'Resolve failed: ' + e.message; log.warn('resolve: ' + e.message); return; }
       const audioOn = settings.get('audio') === 'car';
       const p = new Player({
-        ffmpeg: FFMPEG,
+        ffmpeg: FFMPEG, env: proxyEnv,
         input, inputArgs, width: DW, height: DH, fps: 25, pixfmt: 'rgba',
         fit: settings.get('surface') === 'full' ? 'full' : 'fit',
         // sound to the car speakers (experimental): the device comes from the diagnostics
@@ -194,7 +204,7 @@ mgu.run({
     } catch (e) { log.warn('phone remote not started: ' + e.message); }
     const phoneLine = () => {
       const st = phone ? phone.state() : { ok: false, error: 'not started' };
-      return 'Phone: ' + PAGE + '   code ' + relay.pretty(config.code) + (st.ok ? '' : '   (offline' + (st.error ? ': ' + st.error.slice(0, 40) : '') + ')');
+      return 'Phone: ' + PAGE + '   code ' + relay.pretty(config.code) + (st.ok ? '' : '   (offline)');
     };
 
     /* ---------- menu ---------- */
@@ -202,6 +212,8 @@ mgu.run({
       const where = channels.length ? '  (' + (idx + 1) + '/' + channels.length + ': ' + ((current() && current().name) || '') + ')' : '';
       ui.text('MENU_INFO', (blocked() ? 'Parked only - video plays when the car is stopped' : status) + where);
       ui.text('PHONE_INFO', phoneLine());
+      const ps = phone ? phone.state() : { ok: false, error: 'not started' };
+      ui.text('NET_INFO', ps.ok ? 'Phone remote connected' : 'Phone remote: ' + (ps.error || 'connecting...'));
     }
     ui.onClick('BTN_PLAY', () => { if (!blocked() && channels.length) { paused = false; ui.open('PLAY'); } });
     ui.onClick('BTN_NEXTCH', () => { if (channels.length) { idx = (idx + 1) % channels.length; menu(); } });
