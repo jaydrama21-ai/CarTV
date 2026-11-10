@@ -118,7 +118,7 @@ mgu.run({
       try {
         const r = await sources.resolve(ch.url, { maxHeight: Number(settings.get('maxHeight')) || 720 });
         input = r.input; inputArgs = r.inputArgs || [];
-      } catch (e) { status = 'Resolve failed: ' + e.message; log.warn('resolve: ' + e.message); return; }
+      } catch (e) { status = e.message.slice(0, 90); log.warn('resolve: ' + e.message); return; }
       const audioOn = settings.get('audio') === 'car';
       const p = new Player({
         ffmpeg: FFMPEG, env: proxyEnv,
@@ -138,7 +138,12 @@ mgu.run({
       p.on('error', (e) => { if (player === p) status = 'Error: ' + e.message; log.warn('player: ' + e.message); });
       p.on('exit', (code, err) => {
         log.info('ffmpeg exit ' + code + (err ? ': ' + err.slice(-400) : ''));
-        if (player === p && code && err) status = 'Stream failed: ' + err.split('\n').pop().slice(0, 80);
+        if (player === p && code && err) {
+          const last = err.split('\n').pop();
+          status = /Invalid data found/.test(last) ? 'That link is a web page, not a video stream'
+            : /40[134]|Forbidden|Not Found/.test(last) ? 'The stream refused the connection (' + (/(40\d)/.exec(last) || ['', 'error'])[1] + ')'
+            : 'Stream failed: ' + last.replace(/^\[[^\]]*\]\s*/, '').slice(0, 70);
+        }
       });
       p.on('end', () => {
         if (player !== p) return;
@@ -258,7 +263,7 @@ mgu.run({
           const w = Math.round(vw * s), h = Math.round(vh * s);
           sr.image(VID, Math.round((pl.w - w) / 2), Math.round((pl.h - h) / 2), w, h);
         }
-        if (msg) sr.text(msg, pl.w / 2, pl.h / 2, 30, '#ffffff', { align: 'center', font: 'bold' });
+        if (msg) sr.text(msg.slice(0, 90), pl.w / 2, pl.h / 2, 44, '#ffffff', { align: 'center', font: 'bold' });
         cv.xf(1, 0, 0).append(sr).xf();
       } else {
         if (hasFrame) {
