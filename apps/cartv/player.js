@@ -38,8 +38,8 @@ class Player extends EventEmitter {
     if (!this.o.width || !this.o.height) throw new Error('player: width and height are required');
     this.frameBytes = bytesPerFrame(this.o.pixfmt, this.o.width, this.o.height);
     this.proc = null;
-    this.acc = [];
-    this.accLen = 0;
+    this.ring = null;
+    this.fill = 0;
     this.frames = 0;
     this._stopped = false;
   }
@@ -87,25 +87,31 @@ class Player extends EventEmitter {
       clearTimeout(this._stallT);
       this.emit('exit', code, errTail.trim());
       if (this._stopped) return;
-      if (this.o.loop) { this.acc = []; this.accLen = 0; return this.start(); }
+      if (this.o.loop) { this.fill = 0; return this.start(); }
       this.emit('end');
     });
     return this;
   }
 
+  // Frames are copied into two buffers that take turns, so nothing is allocated per frame: at this
+  // size a fresh buffer for every frame outruns the unit's old Node garbage collector and the app is
+  // killed for its memory. The sink keeps the buffer it was given until it gets the next one.
   _onData(buf) {
-    this.acc.push(buf);
-    this.accLen += buf.length;
-    while (this.accLen >= this.frameBytes) {
-      const whole = this.acc.length === 1 ? this.acc[0] : Buffer.concat(this.acc, this.accLen);
-      const frame = whole.subarray(0, this.frameBytes);
-      const rest = whole.subarray(this.frameBytes);
-      this.acc = rest.length ? [rest] : [];
-      this.accLen = rest.length;
-      this.frames++;
-      this._armStall();
-      if (this.o.onFrame) { try { this.o.onFrame(frame); } catch (e) { this.emit('error', e); } }
-      this.emit('frame', this.frames, frame);
+    if (!this.ring) { this.ring = [Buffer.allocUnsafe(this.frameBytes), Buffer.allocUnsafe(this.frameBytes)]; this.cur = 0; this.fill = 0; }
+    let off = 0;
+    while (off < buf.length) {
+      const n = Math.min(buf.length - off, this.frameBytes - this.fill);
+      buf.copy(this.ring[this.cur], this.fill, off, off + n);
+      this.fill += n; off += n;
+      if (this.fill === this.frameBytes) {
+        const frame = this.ring[this.cur];
+        this.cur ^= 1; this.fill = 0;
+        this.frames++;
+        this._armStall();
+        if (this.o.onFrame) { try { this.o.onFrame(frame); } catch (e) { this.emit('error', e); } }
+        this.emit('frame', this.frames, frame);
+        if (this.frames % 50 === 0 && typeof global.gc === 'function') { try { global.gc(); } catch (e) { /* ignore */ } }
+      }
     }
   }
 
@@ -118,7 +124,7 @@ class Player extends EventEmitter {
     this._stopped = true;
     clearTimeout(this._stallT);
     if (this.proc) { try { this.proc.kill('SIGKILL'); } catch (_) {} this.proc = null; }
-    this.acc = []; this.accLen = 0;
+    this.fill = 0;
   }
 }
 

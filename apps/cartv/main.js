@@ -28,7 +28,8 @@ const relay = require('./relay');
 const netx = require('./netx');
 
 const VID = 1;                 // image slot for the latest decoded frame
-const DW = 1280, DH = 720;     // decode size (16:9); the canvas scales it to the screen
+let DW = 960, DH = 540;       // decode size (16:9), from the Max resolution setting; the canvas scales it to the screen
+const SIZES = { '480': [854, 480], '540': [960, 540], '720': [1280, 720] };
 
 // the bundled static ffmpeg sits next to this file (build.py copies the asset into javascript/);
 // fall back to one on PATH if the bundle is missing.
@@ -116,13 +117,15 @@ mgu.run({
       log.info('tuning ' + (ch.name || '') + ' ' + ch.url);
       let input = ch.url, inputArgs = [];
       try {
-        const r = await sources.resolve(ch.url, { maxHeight: Number(settings.get('maxHeight')) || 720 });
+        const r = await sources.resolve(ch.url, { maxHeight: Number(settings.get('maxHeight')) || 540 });
         input = r.input; inputArgs = r.inputArgs || [];
       } catch (e) { status = e.message.slice(0, 90); log.warn('resolve: ' + e.message); return; }
+      const size = SIZES[String(settings.get('maxHeight'))] || SIZES['540'];
+      DW = size[0]; DH = size[1];
       const audioOn = settings.get('audio') === 'car';
       const p = new Player({
         ffmpeg: FFMPEG, env: proxyEnv,
-        input, inputArgs, width: DW, height: DH, fps: 25, pixfmt: 'rgba',
+        input, inputArgs, width: DW, height: DH, fps: 24, pixfmt: 'rgba',
         fit: settings.get('surface') === 'full' ? 'full' : 'fit',
         // sound to the car speakers (experimental): the device comes from the diagnostics
         audioDevice: audioOn ? (config.audioDevice || 'default') : null,

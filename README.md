@@ -1,7 +1,7 @@
 # Car TV — live TV / IPTV & web video on the iDrive 7 (MGU)
 
 A custom OAP app for the rooted BMW MGU (iDrive 7) head unit. It plays an **m3u/Xtream
-playlist**, a **direct HLS stream**, or (via `yt-dlp`) **YouTube and ~1800 other sites**,
+playlist**, a **direct HLS stream**,,
 decoding on the head unit with a **bundled static ffmpeg** and drawing the picture on the
 center screen through the GPU renderer. **Parked-only by default.**
 
